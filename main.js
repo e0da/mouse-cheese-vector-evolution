@@ -1,13 +1,15 @@
-var MAX_POPULATION = 100
+var MAX_POPULATION = 1000
 var MAX_STEPS      = 200
-var WIDTH          = 800
-var HEIGHT         = 600
+var WIDTH          = 800 * 2
+var HEIGHT         = 450 * 2
 var ORIGIN         = {x: WIDTH / 2, y: HEIGHT - 64}
-var GOAL           = {x: WIDTH / 2 - 2 * 32, y: 32}
-var HAZARD         = {x: WIDTH / 2 + 2 * 32, y: 32}
+var GOAL           = {x: WIDTH -(32 / 2 + 32 * 3 ), y: 32 / 2}
+var HAZARD         = {x: WIDTH -(32 / 2 + 32 * 1 ), y: 32 / 2}
 var ZERO           = {x: 0, y: 0}
-var MAGNITUDE      = 2000
+var MAGNITUDE      = 4000
 var MUTATION_RATE  = 0.01
+var MAX_GOALS      = 10
+var MAX_HAZARDS    = 10
 
 var game = new Phaser.Game(WIDTH, HEIGHT, Phaser.AUTO, 'game', {
   preload: preload, create: create, update: update})
@@ -19,10 +21,12 @@ var population
 var step
 var generation
 var summary
+var toolbox
 
 function preload() {
   game.load.image('grass', 'assets/grass.png')
   game.load.image('cheese', 'assets/cheese.gif')
+  game.load.image('toolbox', 'assets/toolbox.png')
   game.load.spritesheet('characters', 'assets/lpccatratdog.png', 32, 32)
   game.load.spritesheet('spider', 'assets/Fother-spider.png', 35, 35)
 }
@@ -37,21 +41,31 @@ function create() {
   bg = game.add.tileSprite(0, 0, game.width, game.height, 'grass')
   bg.tileScale.x = bg.tileScale.y = 1
 
+  toolbox = game.add.sprite(WIDTH - 32 * 2 * 2, 0, 'toolbox')
+  toolbox.width = 32 * 2 * 2
+  toolbox.height = 64
+  game.physics.arcade.enable(toolbox)
+  toolbox.body.immovable = true
+
   population = game.add.physicsGroup()
 
   goals = game.add.physicsGroup()
-  let cheese = goals.create(GOAL.x, GOAL.y, 'cheese')
-  cheese.body.immovable = true
-  cheese.inputEnabled = true
-  cheese.input.enableDrag()
+  for (let i = 0; i < MAX_GOALS; i++) {
+    let cheese = goals.create(GOAL.x, GOAL.y, 'cheese')
+    cheese.body.immovable = true
+    cheese.inputEnabled = true
+    cheese.input.enableDrag()
+  }
 
   hazards = game.add.physicsGroup()
-  let spider = goals.create(HAZARD.x, HAZARD.y, 'spider')
-  spider.body.immovable = true
-  spider.inputEnabled = true
-  spider.input.enableDrag()
-  spider.animations.add('idle', [0, 6])
-  spider.animations.play('idle', 2, true)
+  for (let i = 0; i < MAX_HAZARDS; i++) {
+    let spider = hazards.create(HAZARD.x, HAZARD.y, 'spider')
+    spider.body.immovable = true
+    spider.inputEnabled = true
+    spider.input.enableDrag()
+    spider.animations.add('idle', [0, 6])
+    spider.animations.play('idle', 2, true)
+  }
 
   summary = game.add.text(10, 10, summaryText(), {
     font: '12pt Arial',
@@ -66,30 +80,14 @@ function create() {
 function setUpGeneration() {
   step = 0
   generation++
-  summary.setText(summaryText())
 
-  // Kill weakest half
+  // Kill the weakest 2/3
   let doomed = population.children.sort(function (left, right) {
     return left.fitness - right.fitness
-  }).splice(0, Math.ceil(population.length / 2))
+  }).splice(0, Math.floor(population.length * 0.5))
 
   for (let i = 0; i < doomed.length; i++) {
-    doomed[i].destroy()
-  }
-
-  // Reset survivors
-  population.setAll('fitness', 0)
-  population.setAll('won', false)
-  population.setAll('lost', false)
-  population.setAll('body.position.x', ORIGIN.x)
-  population.setAll('body.position.y', ORIGIN.y)
-  population.setAll('body.velocity.x', ZERO.x)
-  population.setAll('body.velocity.y', ZERO.y)
-  population.setAll('body.acceleration.x', ZERO.x)
-  population.setAll('body.acceleration.y', ZERO.y)
-
-  let critterAge = function () {
-    return generation - this.generation
+    die(doomed[i])
   }
 
   // Breed new generation
@@ -101,17 +99,30 @@ function setUpGeneration() {
     critter.body.collideWorldBounds = true
     critter.genome = randomGenome()
     critter.generation = generation
-    critter.age = critterAge
     critter.fitness = 0
     critter.won = false
     critter.lost = false
   }
+
+  summary.setText(summaryText())
+
+  // Reset survivors
+  population.setAll('fitness', 0)
+  population.setAll('won', false)
+  population.setAll('lost', false)
+  population.setAll('body.position.x', ORIGIN.x)
+  population.setAll('body.position.y', ORIGIN.y)
+  population.setAll('body.velocity.x', ZERO.x)
+  population.setAll('body.velocity.y', ZERO.y)
+  population.setAll('body.acceleration.x', ZERO.x)
+  population.setAll('body.acceleration.y', ZERO.y)
 }
 
 function update() {
 
+  game.physics.arcade.collide(population, toolbox)
   game.physics.arcade.overlap(population, goals, win)
-  game.physics.arcade.overlap(population, hazards, win)
+  game.physics.arcade.overlap(population, hazards, lose)
 
   for (let i = 0; i < population.length; i++) {
     let critter = population.children[i]
@@ -121,15 +132,18 @@ function update() {
       critter.won = false
     }
 
-    if (critter.lost) {
-      critter.fitness -= (1/MAX_STEPS) * 2
-      critter.lost = false
-    }
 
     critter.body.acceleration = critter.genome[step]
 
     // Point the critter along its velocity vector
     critter.rotation = Math.PI / 2 + critter.position.angle(critter.previousPosition)
+
+    // Kill them if they touch a hazard.
+    if (critter.lost) {
+      critter.destroy()
+      // critter.fitness -= (1/MAX_STEPS) * 10
+      // critter.lost = false
+    }
   }
   if (++step >= MAX_STEPS) {
     setUpGeneration()
@@ -138,12 +152,16 @@ function update() {
 
 function randomGenome() {
   let left  = randomlySelectedGenome() || randomNewGenome()
-  let right = randomlySelectedGenome() || randomNewGenome()
+  // let right = randomlySelectedGenome() || randomNewGenome()
   let genome = []
+  // let split = Math.floor(Math.random() * left.length)
   for (let i = 0; i < left.length; i++) {
-    genome[i] = i % 2 == 0 ? left[i] : right[i]
+    // genome[i] = i < split ? left[i] : right[i]
+    genome[i] = left[i]
     if (Math.random() > (1 - MUTATION_RATE)) {
       genome[i] = randomVector()
+    } else {
+      genome[i] = left[i]
     }
   }
   return genome
@@ -161,12 +179,13 @@ function win(critter, goal) {
   critter.won = true
 }
 
-function lose(critter, goal) {
+function lose(critter, hazard) {
   critter.lost = true
 }
 
 function randomlySelectedGenome() {
-  let critter = population[game.rnd.integerInRange(0, population.length)]
+  if (generation == 1) return randomNewGenome()
+  let critter = population.children[game.rnd.integerInRange(0, population.length)]
   return critter ? critter.genome : null
 }
 
@@ -193,13 +212,16 @@ function maxFitness() {
   return Math.max.apply(null, allFitnesses())
 }
 
+function age(critter) {
+  return generation - critter.generation
+}
 
 function maxAge() {
   return Math.max.apply(null, allAges())
 }
 
 function allAges() {
-  return population.children.map(function (c) { return c.age() })
+  return population.children.map(function (c) { return age(c) })
 }
 
 function avgAge() {
@@ -227,4 +249,8 @@ function summaryText() {
 
 function prettyFloat(num) {
   return Math.floor(num * 10000) / 100
+}
+
+function die(critter) {
+  critter.destroy()
 }

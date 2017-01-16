@@ -1,6 +1,7 @@
-html, head {
+html, body {
   background-color: #333;
   color: #efefef;
+  margin: 0;
 }
 
 canvas {

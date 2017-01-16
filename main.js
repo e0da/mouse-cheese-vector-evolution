@@ -7,7 +7,7 @@ var GOAL           = {x: WIDTH / 2 - 2 * 32, y: 32}
 var HAZARD         = {x: WIDTH / 2 + 2 * 32, y: 32}
 var ZERO           = {x: 0, y: 0}
 var MAGNITUDE      = 2000
-var MUTATION_RATE  = 0.005
+var MUTATION_RATE  = 0.01
 
 var game = new Phaser.Game(WIDTH, HEIGHT, Phaser.AUTO, 'game', {
   preload: preload, create: create, update: update})
@@ -110,8 +110,8 @@ function setUpGeneration() {
 
 function update() {
 
-  game.physics.arcade.collide(population, goals, win)
-  game.physics.arcade.collide(population, hazards, win)
+  game.physics.arcade.overlap(population, goals, win)
+  game.physics.arcade.overlap(population, hazards, win)
 
   for (let i = 0; i < population.length; i++) {
     let critter = population.children[i]
@@ -180,7 +180,7 @@ function allFitnesses() {
   return population.children.map(function (c) { return c.fitness })
 }
 
-function averageFitness() {
+function avgFitness() {
   let fitnesses = allFitnesses()
   if (fitnesses.length == 0) {
     return 0
@@ -189,11 +189,22 @@ function averageFitness() {
   }
 }
 
-function averageAge() {
-  if (population.length == 0) return 0
-  return population.children.reduce(function (acc, critter) {
-    return acc + critter.age()
-  }, 0) / population.length
+function maxFitness() {
+  return Math.max.apply(null, allFitnesses())
+}
+
+
+function maxAge() {
+  return Math.max.apply(null, allAges())
+}
+
+function allAges() {
+  return population.children.map(function (c) { return c.age() })
+}
+
+function avgAge() {
+  let ages = allAges()
+  return ages.reduce(function (acc, age) { return acc + age }, 0) / ages.length
 }
 
 function summaryText() {
@@ -201,11 +212,19 @@ function summaryText() {
     'Generation: ',
     generation,
     '\n',
-    'Avg Fitness: ',
-    Math.floor(averageFitness() * 10000) / 100,
+    'Fitness max/avg: ',
+    prettyFloat(maxFitness()),
+    '% / ',
+    prettyFloat(avgFitness()),
     '%',
     '\n',
-    'Avg Age: ',
-    averageAge()
+    'Age max/avg: ',
+    maxAge(),
+    ' / ',
+    avgAge(),
   ].join('')
+}
+
+function prettyFloat(num) {
+  return Math.floor(num * 10000) / 100
 }

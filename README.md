@@ -7,6 +7,7 @@ and avoid things.
 Asset Credits
 -------------
 
+- Fother-spider.png: https://wiki.themanaworld.org/index.php/File:Fother-spider.png
 - cheese.gif: http://www.emoticone-gratuit.org/smiley/smiley-nourriture.php
 - grass.png: http://opengameart.org/content/grass-2
 - lpccatratdog.png: http://opengameart.org/content/lpc-rat-cat-and-dog
